@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.sha256
+
+# corpus bins live in the data repo; keep the directory but not the contents
+**/corpus/*
+!**/corpus/.gitkeep

@@ -1,0 +1,58 @@
+{
+  "name": "Veritate 85M (ReLU+L1 + MTP-2)",
+  "description": "Byte-level decoder (vocab=256) at h=768 L=12 ffn=3072 heads=12. ReLU FFN with L1 sparsity loss on post-activation, 2-byte multi-token-prediction (MTP) head, byte0_projector contract method for cross-model decode. Trained from scratch on FineWeb-Edu sample-10BT (~5 GB byte-level .bin). bf16 autocast on CUDA, foreach AdamW, WSD schedule with sqrt decay last 10%, NaN-skip guard, bf16-native RMSNorm. Default 50000 steps (~1.2B tokens). Output: models/fineweb_edu_85m_bf16_v1_sparse/. Engine target: v12 binary (MTP byte-0 head + untied lm_head). Requires qat_enabled = true under sufficient training for act_boost = 1 before the engine will load the export.",
+  "engine_exportable": true,
+  "engine_export_format": "v12",
+  "kind": "trainer",
+  "flow": [
+    "scratch",
+    "continue"
+  ],
+  "sizes": {
+    "85m": {
+      "layers": 12,
+      "hidden": 768,
+      "ffn": 3072,
+      "heads": 12,
+      "params": 85000000
+    }
+  },
+  "defaults": {
+    "size": "85m",
+    "precision": "bf16",
+    "version": "v1",
+    "variant": "sparse",
+    "corpus": "chat_500mb",
+    "hidden": 768,
+    "layers": 12,
+    "ffn": 3072,
+    "heads": 12,
+    "seq": 1024,
+    "vocab": 256,
+    "n_predict": 2,
+    "mtp_aux_weight": 0.5,
+    "l1_lambda": 0.0001,
+    "total_steps": 27000,
+    "batch_size": 32,
+    "base_lr": 5e-05,
+    "min_lr": 1e-06,
+    "warmup_steps": 200,
+    "lr_schedule": "wsd",
+    "wsd_decay_frac": 0.1,
+    "wsd_decay_kind": "sqrt",
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "label_smoothing": 0.05,
+    "grad_clip": 1.0,
+    "ckpt_every": 500,
+    "log_every": 10,
+    "eval_every": 100,
+    "eval_iters": 64,
+    "seed": 0,
+    "use_act_ckpt": false,
+    "qat_enabled": true,
+    "quant_mode": "int8",
+    "engine_faithful": false
+  }
+}

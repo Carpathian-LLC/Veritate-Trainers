@@ -1,0 +1,42 @@
+{
+  "name": "Veritate 200M (default base model, two-phase QAT)",
+  "description": "Base model trainer at 200M. Vanilla byte-level decoder (vocab=256), tuned for TinyStories coherence. Two-phase QAT recipe: train fp/bf base first (qat_enabled=false), resume with qat_enabled=true for the last ~25% of the budget. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "kind": "trainer",
+  "flow": [
+    "scratch",
+    "continue"
+  ],
+  "sizes": {
+    "80m":  { "layers": 12, "hidden":  768, "ffn": 3072, "heads": 12, "params":  85000000 },
+    "120m": { "layers": 12, "hidden":  896, "ffn": 3584, "heads": 14, "params": 115000000 },
+    "200m": { "layers": 16, "hidden": 1024, "ffn": 4096, "heads": 16, "params": 202000000 }
+  },
+  "defaults": {
+    "size": "200m",
+    "precision": "bf16",
+    "version": "v1",
+    "total_steps": 12000,
+    "batch_size": 108,
+    "seq": 1024,
+    "n_chunks": 4,
+    "bptt_window": 4,
+    "base_lr": 0.00039,
+    "min_lr": 3e-05,
+    "warmup_steps": 360,
+    "lr_schedule": "cosine",
+    "wsd_decay_frac": 0.1,
+    "wsd_decay_kind": "sqrt",
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "label_smoothing": 0.0,
+    "grad_clip": 1.0,
+    "ckpt_every": 1200,
+    "log_every": 12,
+    "eval_every": 600,
+    "eval_iters": 16,
+    "seed": 0,
+    "use_act_ckpt": true,
+    "qat_enabled": false
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "name": "Veritate 10M (exploration scale, vanilla)",
+  "description": "Vanilla byte-level decoder at exploration scale. Designed for smoke tests, prompt iteration, kernel-level latency checks, and overnight runs on integrated GPU / CPU. Same canonical Veritate stack as the 80M / 200M plugins (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Two-phase QAT recipe supported: train base first (qat_enabled=false), resume with qat_enabled=true for the last ~25% of the budget. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "kind": "trainer",
+  "flow": [
+    "scratch",
+    "continue"
+  ],
+  "sizes": {
+    "5m": {
+      "layers": 6,
+      "hidden": 256,
+      "ffn": 1024,
+      "heads": 4,
+      "params": 5000000
+    },
+    "7m": {
+      "layers": 8,
+      "hidden": 256,
+      "ffn": 1024,
+      "heads": 4,
+      "params": 7000000
+    },
+    "10m": {
+      "layers": 8,
+      "hidden": 320,
+      "ffn": 1280,
+      "heads": 8,
+      "params": 10000000
+    },
+    "20m": {
+      "layers": 8,
+      "hidden": 512,
+      "ffn": 2048,
+      "heads": 8,
+      "params": 20000000
+    },
+    "30m": {
+      "layers": 10,
+      "hidden": 512,
+      "ffn": 2048,
+      "heads": 8,
+      "params": 31000000
+    },
+    "50m": {
+      "layers": 10,
+      "hidden": 640,
+      "ffn": 2560,
+      "heads": 10,
+      "params": 50000000
+    },
+    "70m": {
+      "layers": 12,
+      "hidden": 640,
+      "ffn": 2560,
+      "heads": 10,
+      "params": 70000000
+    }
+  },
+  "defaults": {
+    "size": "10m",
+    "precision": "fp32",
+    "version": "v1",
+    "total_steps": 4000,
+    "batch_size": 32,
+    "seq": 512,
+    "n_chunks": 4,
+    "bptt_window": 4,
+    "base_lr": 0.0006,
+    "min_lr": 6e-05,
+    "warmup_steps": 120,
+    "lr_schedule": "cosine",
+    "wsd_decay_frac": 0.1,
+    "wsd_decay_kind": "sqrt",
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "label_smoothing": 0.0,
+    "grad_clip": 1.0,
+    "ckpt_every": 400,
+    "log_every": 10,
+    "eval_every": 100,
+    "eval_iters": 8,
+    "seed": 0,
+    "use_act_ckpt": false,
+    "qat_enabled": true
+  }
+}

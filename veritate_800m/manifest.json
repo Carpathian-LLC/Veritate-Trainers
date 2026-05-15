@@ -1,0 +1,44 @@
+{
+  "name": "Veritate 800M (RoPE + MTP)",
+  "description": "Byte-level decoder (vocab=256) at h=1536 L=28 ffn=6144 heads=24, RoPE positional encoding, 4-byte multi-token-prediction (MTP) head. Trained from scratch on FineWeb-Edu (~211 GB) for ~16B tokens (Chinchilla-optimal). Optimization stack: single-forward path, foreach AdamW, prefetched data loader, bf16 autocast, NaN-skip guard, bf16-native RMSNorm. Wall-clock ~24-26 days on M3 Ultra.",
+  "kind": "trainer",
+  "flow": [
+    "scratch",
+    "continue"
+  ],
+  "sizes": {
+    "300m": { "layers": 20, "hidden": 1024, "ffn": 4096, "heads": 16, "params": 330000000 },
+    "500m": { "layers": 24, "hidden": 1280, "ffn": 5120, "heads": 20, "params": 472000000 },
+    "800m": { "layers": 28, "hidden": 1536, "ffn": 6144, "heads": 24, "params": 793000000 }
+  },
+  "defaults": {
+    "size": "800m",
+    "precision": "bf16",
+    "version": "v1",
+    "corpus": "fineweb_edu",
+    "total_steps": 100000,
+    "batch_size": 64,
+    "seq": 1024,
+    "n_predict": 4,
+    "mtp_aux_weight": 0.1,
+    "rope_base": 10000.0,
+    "base_lr": 0.0003,
+    "min_lr": 3e-05,
+    "warmup_steps": 2000,
+    "lr_schedule": "cosine",
+    "wsd_decay_frac": 0.1,
+    "wsd_decay_kind": "sqrt",
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "label_smoothing": 0.0,
+    "grad_clip": 1.0,
+    "ckpt_every": 500,
+    "log_every": 20,
+    "eval_every": 200,
+    "eval_iters": 64,
+    "seed": 0,
+    "use_act_ckpt": true,
+    "qat_enabled": false
+  }
+}

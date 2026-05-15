@@ -1,0 +1,43 @@
+{
+  "name": "Veritate 50B (vanilla dense, 8-bit Adam, cluster territory)",
+  "description": "Vanilla byte-level decoder in the 13B-50B range. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). These shapes require sharded multi-GPU or cluster training; activation checkpointing and 8-bit AdamW are mandatory and still not sufficient on a single card. Two-phase QAT recipe supported. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "kind": "trainer",
+  "flow": [
+    "scratch",
+    "continue"
+  ],
+  "sizes": {
+    "13b": { "layers": 40, "hidden": 5120, "ffn": 21504, "heads": 40, "params": 13003000000 },
+    "30b": { "layers": 60, "hidden": 6656, "ffn": 26624, "heads": 52, "params": 31897000000 },
+    "50b": { "layers": 64, "hidden": 8192, "ffn": 32768, "heads": 64, "params": 51539000000 }
+  },
+  "defaults": {
+    "size": "50b",
+    "precision": "bf16",
+    "version": "v1",
+    "total_steps": 150000,
+    "batch_size": 1,
+    "seq": 1024,
+    "n_chunks": 1,
+    "bptt_window": 1,
+    "base_lr": 0.0001,
+    "min_lr": 1e-05,
+    "warmup_steps": 5000,
+    "lr_schedule": "cosine",
+    "wsd_decay_frac": 0.1,
+    "wsd_decay_kind": "sqrt",
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "label_smoothing": 0.0,
+    "grad_clip": 1.0,
+    "ckpt_every": 5000,
+    "log_every": 50,
+    "eval_every": 5000,
+    "eval_iters": 4,
+    "seed": 0,
+    "use_act_ckpt": true,
+    "use_8bit_adam": true,
+    "qat_enabled": false
+  }
+}

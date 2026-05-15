@@ -1,0 +1,43 @@
+{
+  "name": "Veritate 400M (vanilla dense, two-phase QAT)",
+  "description": "Vanilla byte-level decoder in the 200-800M range. Same canonical Veritate stack as 80M / 200M (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256), tuned for the medium-large band where activation checkpointing earns its keep but a single GPU still fits the optimizer. Two-phase QAT recipe: train fp/bf base first (qat_enabled=false), resume with qat_enabled=true for the last ~25% of the budget. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "kind": "trainer",
+  "flow": [
+    "scratch",
+    "continue"
+  ],
+  "sizes": {
+    "200m": { "layers": 16, "hidden": 1024, "ffn": 4096, "heads": 16, "params": 202000000 },
+    "350m": { "layers": 24, "hidden": 1024, "ffn": 4096, "heads": 16, "params": 330000000 },
+    "400m": { "layers": 24, "hidden": 1280, "ffn": 5120, "heads": 20, "params": 472000000 },
+    "800m": { "layers": 28, "hidden": 1536, "ffn": 6144, "heads": 24, "params": 793000000 }
+  },
+  "defaults": {
+    "size": "400m",
+    "precision": "bf16",
+    "version": "v1",
+    "total_steps": 20000,
+    "batch_size": 16,
+    "seq": 1024,
+    "n_chunks": 2,
+    "bptt_window": 2,
+    "base_lr": 0.0003,
+    "min_lr": 3e-05,
+    "warmup_steps": 500,
+    "lr_schedule": "cosine",
+    "wsd_decay_frac": 0.1,
+    "wsd_decay_kind": "sqrt",
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "label_smoothing": 0.0,
+    "grad_clip": 1.0,
+    "ckpt_every": 1000,
+    "log_every": 20,
+    "eval_every": 1000,
+    "eval_iters": 16,
+    "seed": 0,
+    "use_act_ckpt": true,
+    "qat_enabled": false
+  }
+}
