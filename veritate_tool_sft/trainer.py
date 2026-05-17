@@ -132,6 +132,14 @@ def lr_at(step, total, warmup, base_lr, min_lr, schedule="wsd",
 
 
 def pick_device():
+    forced = (os.environ.get("VERITATE_DEVICE") or "").strip().lower()
+    if forced in ("cuda", "mps", "cpu"):
+        ok = (forced == "cpu") \
+             or (forced == "cuda" and torch.cuda.is_available()) \
+             or (forced == "mps"  and getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
+        if ok: return forced
+        print(f"[tool_sft] requested device={forced!r} unavailable; using cpu", flush=True)
+        return "cpu"
     if torch.cuda.is_available():
         return "cuda"
     if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():

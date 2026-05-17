@@ -209,10 +209,34 @@ def make_data_loader(bin_path, total_chunk_len, batch_size, seed):
     return draw, N
 
 
+DEVICE_ENV = "VERITATE_DEVICE"
+
+
+def _device_available(name):
+    if name == "cpu":  return True
+    if name == "cuda": return torch.cuda.is_available()
+    if name == "mps":
+        return bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
+    return False
+
+
 def pick_device():
+    """Trainer-side device selection. The platform may force a specific device
+    via VERITATE_DEVICE=cpu/cuda/mps; we obey it (falling back to cpu if the
+    requested device isn't actually available). Otherwise pick best-available.
+    The trainer makes no host-architecture assumptions — that's the platform's
+    job, communicated through the env var."""
+    forced = (os.environ.get(DEVICE_ENV) or "").strip().lower()
+    if forced and forced != "auto":
+        if forced in ("cpu", "cuda", "mps"):
+            if _device_available(forced):
+                return forced
+            print(f"[vanilla_trainer] requested device={forced!r} unavailable; using cpu", flush=True)
+            return "cpu"
+        print(f"[vanilla_trainer] ignoring unknown {DEVICE_ENV}={forced!r}", flush=True)
     if torch.cuda.is_available():
         return "cuda"
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+    if _device_available("mps"):
         return "mps"
     return "cpu"
 

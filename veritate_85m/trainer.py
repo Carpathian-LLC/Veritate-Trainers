@@ -301,6 +301,13 @@ def lr_at(step, total, warmup, base_lr, min_lr, schedule="wsd",
 
 
 def pick_device(requested):
+    # CLI --device wins. When --device=auto, consult VERITATE_DEVICE env (set
+    # by the platform) before falling through to auto-detect. Trainer makes
+    # no host-arch assumptions.
+    if requested == "auto":
+        forced = (os.environ.get("VERITATE_DEVICE") or "auto").strip().lower()
+        if forced in ("cuda", "mps", "cpu"):
+            requested = forced
     if requested == "cuda":
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA requested but torch.cuda.is_available() is False")
