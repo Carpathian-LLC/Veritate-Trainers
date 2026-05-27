@@ -46,7 +46,7 @@ REPO_ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, HERE)
 sys.path.insert(0, REPO_ROOT)
 
-from veritate_core.plugin import save, paths, qat as qat_helpers
+from veritate_core.plugin import save, paths, qat as qat_helpers, multicorpus
 from veritate_core.model import RMSNorm, QuantLinear, FFN, VOCAB_BYTE_LEVEL
 from veritate_core import qat as _qat
 
@@ -665,8 +665,9 @@ def main():
         name = save.compose_name(args.corpus, args.size, args.precision, version_tag)
     print("model name: " + name, flush=True)
 
-    train_path, val_path = save.resolve_corpus(args.corpus)
-    print("corpus train: " + train_path, flush=True)
+    _corpus_mix = multicorpus.resolve_and_weight(args.corpus, save.resolve_corpus)
+    val_path    = _corpus_mix[0][1]
+    print("corpus mix:   " + multicorpus.format_mix_summary(_corpus_mix), flush=True)
     if val_path:
         print("corpus val:   " + val_path, flush=True)
 
@@ -747,7 +748,7 @@ def main():
         write_config(name, args, shape, n_params, corpus_hash)
         print("wrote: " + paths.config_path(name), flush=True)
 
-    train_draw, train_n = make_data_loader(train_path, args.batch_size, args.seq, args.seed)
+    train_draw, train_n = multicorpus.make_mixed_loader(_corpus_mix, args.batch_size, args.seq, args.seed)
     val_draw = None
     if val_path:
         val_draw, _ = make_data_loader(val_path, args.batch_size, args.seq, args.seed + 1)
