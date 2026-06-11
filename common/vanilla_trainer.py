@@ -29,7 +29,7 @@ import time
 import numpy as np
 import torch
 
-from veritate_core.plugin import save, paths, model as _model_mod, qat as qat_helpers, multicorpus
+from veritate_core.plugin import save, paths, model as _model_mod, qat as qat_helpers, multicorpus, bench
 
 Veritate         = _model_mod.Veritate
 VOCAB_BYTE_LEVEL = _model_mod.VOCAB_BYTE_LEVEL
@@ -92,6 +92,7 @@ RESERVED_FLOAT_FLAGS = {
 
 def parse_args(manifest):
     ap = argparse.ArgumentParser(description=manifest.get("description", ""))
+    ap.add_argument("--bench", action="store_true")
     for k in RESERVED_STRING_FLAGS:
         ap.add_argument("--" + k, type=str, default="")
     defaults = manifest.get("defaults", {}) or {}
@@ -364,7 +365,8 @@ def run(plugin_id, here):
         apply_resume_overrides(args, sys.argv)
         if qat_enabled:
             args.qat_enabled = True
-    require_description(args.description)
+    if not args.bench:
+        require_description(args.description)
 
     if args.size not in size_presets:
         raise ValueError("unknown size: " + str(args.size) + " (valid: " + ", ".join(size_presets) + ")")
@@ -401,11 +403,14 @@ def run(plugin_id, here):
         name = compose_name(args.corpus, args.size, args.precision, version_tag)
     print("model name: " + name, flush=True)
 
-    _corpus_mix = multicorpus.resolve_and_weight(args.corpus, resolve_corpus)
-    val_path    = _corpus_mix[0][1]
-    print("corpus mix:   " + multicorpus.format_mix_summary(_corpus_mix), flush=True)
-    if val_path:
-        print("corpus val:   " + val_path, flush=True)
+    _corpus_mix = None
+    val_path    = None
+    if not args.bench:
+        _corpus_mix = multicorpus.resolve_and_weight(args.corpus, resolve_corpus)
+        val_path    = _corpus_mix[0][1]
+        print("corpus mix:   " + multicorpus.format_mix_summary(_corpus_mix), flush=True)
+        if val_path:
+            print("corpus val:   " + val_path, flush=True)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -440,6 +445,12 @@ def run(plugin_id, here):
     print("shape:  hidden=" + str(shape["hidden"]) + " layers=" + str(shape["layers"])
           + " ffn=" + str(shape["ffn"]) + " heads=" + str(shape["heads"])
           + " seq=" + str(args.seq), flush=True)
+
+    if args.bench:
+        result = bench.run(veritate_model, device, args.seq, VOCAB_BYTE_LEVEL,
+                           on_progress=lambda s: print("bench: " + s, flush=True))
+        print("BENCH_RESULT " + json.dumps(result), flush=True)
+        return
 
     resume_step = 0
     resume_opt_state = None

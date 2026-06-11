@@ -2,6 +2,7 @@
   "name": "Veritate 10M (vanilla dense)",
   "description": "Vanilla byte-level decoder at 10M parameters. Same canonical Veritate stack as the 80M / 200M plugins (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Suited to smoke tests, prompt iteration, kernel-level latency checks, and fast overnight runs.",
   "kind": "trainer",
+  "bench": true,
   "flow": [
     "scratch",
     "continue"

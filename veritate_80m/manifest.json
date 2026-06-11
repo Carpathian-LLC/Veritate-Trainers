@@ -2,6 +2,7 @@
   "name": "Veritate 80M (default base model)",
   "description": "Base model trainer at 80M. Vanilla byte-level decoder (vocab=256), tuned for TinyStories coherence and fast iteration. Higher peak LR, larger batch, no activation checkpointing.",
   "kind": "trainer",
+  "bench": true,
   "flow": [
     "scratch",
     "continue"

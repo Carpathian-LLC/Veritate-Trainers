@@ -46,7 +46,7 @@ REPO_ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, HERE)
 sys.path.insert(0, REPO_ROOT)
 
-from veritate_core.plugin import save, paths, qat as qat_helpers, multicorpus
+from veritate_core.plugin import save, paths, qat as qat_helpers, multicorpus, bench
 from veritate_core.model import RMSNorm, QuantLinear, FFN, VOCAB_BYTE_LEVEL
 from veritate_core import qat as _qat
 
@@ -376,6 +376,7 @@ def parse_args():
     ap.add_argument("--corpus",      type=str, default="")
     ap.add_argument("--description", type=str, default="")
     ap.add_argument("--resume",      type=str, default="")
+    ap.add_argument("--bench",       action="store_true")
     # Core Plugins inject these; declare unconditionally so argparse accepts them.
     ap.add_argument("--activation",  type=str,   default="gelu")
     ap.add_argument("--l1_lambda",   type=float, default=0.0)
@@ -630,7 +631,8 @@ def main():
         apply_resume_overrides(args, sys.argv)
         if qat_enabled:
             args.qat_enabled = True
-    save.require_description(args.description)
+    if not args.bench:
+        save.require_description(args.description)
 
     if args.size not in SIZE_PRESETS:
         raise ValueError("unknown size: " + str(args.size) + " (valid: " + ", ".join(SIZE_PRESETS) + ")")
@@ -665,11 +667,14 @@ def main():
         name = save.compose_name(args.corpus, args.size, args.precision, version_tag)
     print("model name: " + name, flush=True)
 
-    _corpus_mix = multicorpus.resolve_and_weight(args.corpus, save.resolve_corpus)
-    val_path    = _corpus_mix[0][1]
-    print("corpus mix:   " + multicorpus.format_mix_summary(_corpus_mix), flush=True)
-    if val_path:
-        print("corpus val:   " + val_path, flush=True)
+    _corpus_mix = None
+    val_path    = None
+    if not args.bench:
+        _corpus_mix = multicorpus.resolve_and_weight(args.corpus, save.resolve_corpus)
+        val_path    = _corpus_mix[0][1]
+        print("corpus mix:   " + multicorpus.format_mix_summary(_corpus_mix), flush=True)
+        if val_path:
+            print("corpus val:   " + val_path, flush=True)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -728,6 +733,12 @@ def main():
     print("shape:  hidden=" + str(shape["hidden"]) + " layers=" + str(shape["layers"])
           + " ffn=" + str(shape["ffn"]) + " heads=" + str(shape["heads"])
           + " seq=" + str(args.seq) + " n_predict=" + str(args.n_predict), flush=True)
+
+    if args.bench:
+        result = bench.run(model, device, args.seq, VOCAB_BYTE_LEVEL,
+                           on_progress=lambda s: print("bench: " + s, flush=True))
+        print("BENCH_RESULT " + json.dumps(result), flush=True)
+        return
 
     resume_step = 0
     resume_opt_state = None

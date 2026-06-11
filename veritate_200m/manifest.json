@@ -2,14 +2,33 @@
   "name": "Veritate 200M (default base model)",
   "description": "Base model trainer at 200M. Vanilla byte-level decoder (vocab=256), tuned for TinyStories coherence.",
   "kind": "trainer",
+  "bench": true,
   "flow": [
     "scratch",
     "continue"
   ],
   "sizes": {
-    "80m":  { "layers": 12, "hidden":  768, "ffn": 3072, "heads": 12, "params":  85000000 },
-    "120m": { "layers": 12, "hidden":  896, "ffn": 3584, "heads": 14, "params": 115000000 },
-    "200m": { "layers": 16, "hidden": 1024, "ffn": 4096, "heads": 16, "params": 202000000 }
+    "80m": {
+      "layers": 12,
+      "hidden": 768,
+      "ffn": 3072,
+      "heads": 12,
+      "params": 85000000
+    },
+    "120m": {
+      "layers": 12,
+      "hidden": 896,
+      "ffn": 3584,
+      "heads": 14,
+      "params": 115000000
+    },
+    "200m": {
+      "layers": 16,
+      "hidden": 1024,
+      "ffn": 4096,
+      "heads": 16,
+      "params": 202000000
+    }
   },
   "defaults": {
     "size": "200m",

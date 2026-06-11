@@ -2,14 +2,33 @@
   "name": "Veritate 800M (RoPE + MTP)",
   "description": "Byte-level decoder (vocab=256) at h=1536 L=28 ffn=6144 heads=24, RoPE positional encoding, 4-byte multi-token-prediction (MTP) head. Trained from scratch on FineWeb-Edu (~211 GB) for ~16B tokens (Chinchilla-optimal). Optimization stack: single-forward path, foreach AdamW, prefetched data loader, bf16 autocast, NaN-skip guard, bf16-native RMSNorm. Wall-clock ~24-26 days on M3 Ultra.",
   "kind": "trainer",
+  "bench": true,
   "flow": [
     "scratch",
     "continue"
   ],
   "sizes": {
-    "300m": { "layers": 20, "hidden": 1024, "ffn": 4096, "heads": 16, "params": 330000000 },
-    "500m": { "layers": 24, "hidden": 1280, "ffn": 5120, "heads": 20, "params": 472000000 },
-    "800m": { "layers": 28, "hidden": 1536, "ffn": 6144, "heads": 24, "params": 793000000 }
+    "300m": {
+      "layers": 20,
+      "hidden": 1024,
+      "ffn": 4096,
+      "heads": 16,
+      "params": 330000000
+    },
+    "500m": {
+      "layers": 24,
+      "hidden": 1280,
+      "ffn": 5120,
+      "heads": 20,
+      "params": 472000000
+    },
+    "800m": {
+      "layers": 28,
+      "hidden": 1536,
+      "ffn": 6144,
+      "heads": 24,
+      "params": 793000000
+    }
   },
   "defaults": {
     "size": "800m",
