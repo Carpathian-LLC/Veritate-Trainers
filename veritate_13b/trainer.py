@@ -4,10 +4,9 @@
 # Legal Notice: Distribution Not Authorized.
 # ------------------------------------------------------------------------------------
 # Notes:
-# - veritate_13b: 3B-13B vanilla Veritate. Defaults assume an 80 GB-class
-#   card or sharded multi-GPU setup; activation checkpointing and 8-bit
-#   AdamW are mandatory. Shape / LR / batch presets live in manifest.json;
-#   training loop is plugins/common/vanilla_trainer.py.
+# - veritate_13b: 13B vanilla Veritate, standalone single-size trainer. Shape and
+#   training presets live in manifest.json; training loop is
+#   plugins/common/vanilla_trainer.py.
 # plugins/veritate_13b/plugin.py
 # ------------------------------------------------------------------------------------
 # Imports

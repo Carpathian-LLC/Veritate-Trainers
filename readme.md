@@ -39,7 +39,7 @@ The manifest carries trainer identity, the shape table for the size dropdown, an
 
 `flow` is how the trainer starts. `"scratch"` builds a new model from random init or from a named base; `"continue"` resumes an existing model. A trainer may support either or both.
 
-`sizes` is the shape table. Keys are size labels (`"80m"`, `"1b"`); values are dicts with `layers`, `hidden`, `ffn`, `heads`, `params`, optionally `active_params` for MoE.
+`sizes` is the shape table with exactly one entry: each trainer is standalone at one size, and the dashboard fixes the size from the trainer you pick (there is no size dropdown for plugin trainers). The key is the size label (`"80m"`, `"200b"`); the value carries `layers`, `hidden`, `ffn`, `heads`, `params`, optionally `active_params` for MoE. Trainers are named by their size (`"Veritate 200B"`).
 
 The keys under `defaults` line up with fields the dashboard already knows how to render (`TRAINER_SCHEMA` in `veritate_mri/web/index.js`). Pick the ones you have an opinion about and skip the rest. The full list of recognized keys is in the canonical contract.
 

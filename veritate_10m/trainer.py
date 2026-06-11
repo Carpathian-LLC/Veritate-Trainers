@@ -4,10 +4,9 @@
 # Legal Notice: Distribution Not Authorized.
 # ------------------------------------------------------------------------------------
 # Notes:
-# - veritate_10m: exploration-scale vanilla Veritate. Smoke-test trainer for
-#   prompt iteration, kernel-latency checks, and overnight runs on integrated
-#   GPU or CPU. Shape / LR / batch presets live in manifest.json. The actual
-#   training loop is plugins/common/vanilla_trainer.py.
+# - veritate_10m: 10M vanilla Veritate, standalone single-size trainer. Shape and
+#   training presets live in manifest.json; training loop is
+#   plugins/common/vanilla_trainer.py.
 # plugins/veritate_10m/plugin.py
 # ------------------------------------------------------------------------------------
 # Imports

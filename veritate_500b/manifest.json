@@ -1,6 +1,6 @@
 {
-  "name": "Veritate 13B",
-  "description": "Vanilla byte-level decoder at the 13B scale. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing and 8-bit AdamW.",
+  "name": "Veritate 500B",
+  "description": "Vanilla byte-level decoder at the 500B scale. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing and 8-bit AdamW.",
   "kind": "trainer",
   "bench": true,
   "flow": [
@@ -8,26 +8,26 @@
     "continue"
   ],
   "sizes": {
-    "13b": {
-      "layers": 40,
-      "hidden": 5120,
-      "ffn": 21504,
-      "heads": 40,
-      "params": 13003000000
+    "500b": {
+      "layers": 123,
+      "hidden": 18432,
+      "ffn": 73728,
+      "heads": 144,
+      "params": 501463000000
     }
   },
   "defaults": {
-    "size": "13b",
+    "size": "500b",
     "precision": "bf16",
     "version": "v1",
-    "total_steps": 80000,
+    "total_steps": 250000,
     "batch_size": 1,
     "seq": 1024,
     "n_chunks": 1,
     "bptt_window": 1,
-    "base_lr": 0.00012,
-    "min_lr": 1.2e-05,
-    "warmup_steps": 3000,
+    "base_lr": 4e-05,
+    "min_lr": 4e-06,
+    "warmup_steps": 10000,
     "lr_schedule": "cosine",
     "wsd_decay_frac": 0.1,
     "wsd_decay_kind": "sqrt",
@@ -36,9 +36,9 @@
     "beta2": 0.95,
     "label_smoothing": 0.0,
     "grad_clip": 1.0,
-    "ckpt_every": 4000,
-    "log_every": 25,
-    "eval_every": 4000,
+    "ckpt_every": 5000,
+    "log_every": 50,
+    "eval_every": 5000,
     "eval_iters": 4,
     "seed": 0,
     "use_act_ckpt": true,

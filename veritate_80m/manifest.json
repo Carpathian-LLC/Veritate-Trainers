@@ -1,6 +1,6 @@
 {
-  "name": "Veritate 80M (default base model)",
-  "description": "Base model trainer at 80M. Vanilla byte-level decoder (vocab=256), tuned for TinyStories coherence and fast iteration. Higher peak LR, larger batch, no activation checkpointing.",
+  "name": "Veritate 80M",
+  "description": "Vanilla byte-level decoder at the 80M scale. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256).",
   "kind": "trainer",
   "bench": true,
   "flow": [
@@ -14,20 +14,6 @@
       "ffn": 3072,
       "heads": 12,
       "params": 85000000
-    },
-    "120m": {
-      "layers": 12,
-      "hidden": 896,
-      "ffn": 3584,
-      "heads": 14,
-      "params": 115000000
-    },
-    "200m": {
-      "layers": 16,
-      "hidden": 1024,
-      "ffn": 4096,
-      "heads": 16,
-      "params": 202000000
     }
   },
   "defaults": {

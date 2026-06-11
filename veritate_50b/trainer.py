@@ -4,10 +4,9 @@
 # Legal Notice: Distribution Not Authorized.
 # ------------------------------------------------------------------------------------
 # Notes:
-# - veritate_50b: 13B-50B vanilla Veritate. Cluster-scale shapes; activation
-#   checkpointing and 8-bit AdamW are mandatory and still not sufficient on
-#   a single card. Shape / LR / batch presets live in manifest.json;
-#   training loop is plugins/common/vanilla_trainer.py.
+# - veritate_50b: 50B vanilla Veritate, standalone single-size trainer. Shape and
+#   training presets live in manifest.json; training loop is
+#   plugins/common/vanilla_trainer.py.
 # plugins/veritate_50b/plugin.py
 # ------------------------------------------------------------------------------------
 # Imports

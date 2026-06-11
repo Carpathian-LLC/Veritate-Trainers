@@ -20,6 +20,7 @@
 # Imports
 
 import argparse
+import importlib.util
 import json
 import math
 import os
@@ -34,11 +35,12 @@ from veritate_core.plugin import save, paths, model as _model_mod, qat as qat_he
 Veritate         = _model_mod.Veritate
 VOCAB_BYTE_LEVEL = _model_mod.VOCAB_BYTE_LEVEL
 
-append_train_row    = save.append_train_row
-compose_name        = save.compose_name
-hash_corpus         = save.hash_corpus
-require_description = save.require_description
-resolve_corpus      = save.resolve_corpus
+append_train_row       = save.append_train_row
+compose_name           = save.compose_name
+hash_corpus            = save.hash_corpus
+require_description    = save.require_description
+resolve_corpus         = save.resolve_corpus
+truncate_train_csv_at  = save.truncate_train_csv_at
 
 
 # ------------------------------------------------------------------------------------
@@ -336,6 +338,10 @@ def evaluate(model, val_draw, n_iters, seq, amp_dtype, bptt_window, device_type=
 
 def build_optimizer(params, args, device):
     use_8bit = bool(getattr(args, "use_8bit_adam", False))
+    if use_8bit and importlib.util.find_spec("bitsandbytes") is None:
+        print("8-bit AdamW requested but bitsandbytes is not installed; "
+              "falling back to torch AdamW (fp32 moments, ~2x optimizer memory)", flush=True)
+        use_8bit = False
     if use_8bit:
         import bitsandbytes as bnb
         return bnb.optim.AdamW8bit(
@@ -464,6 +470,9 @@ def run(plugin_id, here):
         resume_step = latest_checkpoint_step(name)
         print("resume: " + name + "  from step " + str(resume_step), flush=True)
         resume_opt_state = load_resume_state(veritate_model, name, resume_step, device)
+        dropped = truncate_train_csv_at(name, resume_step)
+        if dropped:
+            print("train.csv: dropped " + str(dropped) + " stale rows past step " + str(resume_step), flush=True)
     else:
         print("hashing corpus (one-time, ~5-10s for 2GB)...", flush=True)
         corpus_hash = hash_corpus(args.corpus)

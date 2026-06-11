@@ -4,10 +4,10 @@
 # Legal Notice: Distribution Not Authorized.
 # ------------------------------------------------------------------------------------
 # Notes:
-# - veritate_3b: 3B vanilla Veritate, standalone single-size trainer. Shape and
+# - veritate_1t: 1T vanilla Veritate, standalone single-size trainer. Shape and
 #   training presets live in manifest.json; training loop is
 #   plugins/common/vanilla_trainer.py.
-# plugins/veritate_3b/plugin.py
+# plugins/veritate_1t/plugin.py
 # ------------------------------------------------------------------------------------
 # Imports
 
@@ -26,7 +26,7 @@ import vanilla_trainer
 # ------------------------------------------------------------------------------------
 # Constants
 
-PLUGIN_ID = "veritate_3b"
+PLUGIN_ID = "veritate_1t"
 
 
 # ------------------------------------------------------------------------------------

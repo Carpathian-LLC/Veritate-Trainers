@@ -4,9 +4,8 @@
 # Legal Notice: Distribution Not Authorized.
 # ------------------------------------------------------------------------------------
 # Notes:
-# - veritate_1b3: 1B-2B vanilla Veritate. Defaults turn on activation
-#   checkpointing and 8-bit AdamW so the optimizer fits a 12-24 GB GPU.
-#   Shape / LR / batch presets live in manifest.json; training loop is
+# - veritate_1b3: 1.3B vanilla Veritate, standalone single-size trainer. Shape and
+#   training presets live in manifest.json; training loop is
 #   plugins/common/vanilla_trainer.py.
 # plugins/veritate_1b3/plugin.py
 # ------------------------------------------------------------------------------------

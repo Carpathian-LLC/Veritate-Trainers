@@ -4,10 +4,9 @@
 # Legal Notice: Distribution Not Authorized.
 # ------------------------------------------------------------------------------------
 # Notes:
-# - veritate_400m: medium-large vanilla Veritate (200-800M range). Same
-#   canonical trunk as the 80M / 200M plugins; tuned defaults for the band
-#   where activation checkpointing earns its keep. Shape / LR / batch presets
-#   live in manifest.json. Training loop is plugins/common/vanilla_trainer.py.
+# - veritate_400m: 400M vanilla Veritate, standalone single-size trainer. Shape and
+#   training presets live in manifest.json; training loop is
+#   plugins/common/vanilla_trainer.py.
 # plugins/veritate_400m/plugin.py
 # ------------------------------------------------------------------------------------
 # Imports

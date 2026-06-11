@@ -1,6 +1,6 @@
 {
-  "name": "Veritate 1.3B (vanilla dense)",
-  "description": "Vanilla byte-level decoder in the 1B-2B range. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing and 8-bit AdamW for memory efficiency.",
+  "name": "Veritate 1.3B",
+  "description": "Vanilla byte-level decoder at the 1.3B scale. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing and 8-bit AdamW.",
   "kind": "trainer",
   "bench": true,
   "flow": [
@@ -8,26 +8,12 @@
     "continue"
   ],
   "sizes": {
-    "800m": {
-      "layers": 28,
-      "hidden": 1536,
-      "ffn": 6144,
-      "heads": 24,
-      "params": 793000000
-    },
     "1b3": {
       "layers": 24,
       "hidden": 2048,
       "ffn": 8192,
       "heads": 16,
       "params": 1210000000
-    },
-    "2b": {
-      "layers": 24,
-      "hidden": 2560,
-      "ffn": 10240,
-      "heads": 20,
-      "params": 1888000000
     }
   },
   "defaults": {
