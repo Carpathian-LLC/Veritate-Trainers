@@ -1,6 +1,6 @@
 {
-  "name": "Veritate MEGA (8-expert top-1 MoE, INT8 QAT-ready)",
-  "description": "MoE byte-level decoder. Each transformer block's FFN is replaced with N independent expert FFNs and a top-1 router; total parameter count scales with expert count, while active parameters per byte stay near a single expert's footprint so the model fits the 96 MB L3 of the C engine target. Two-phase QAT recipe: train fp/bf base first (qat_enabled=false), resume with qat_enabled=true for the final ~25% of the budget. Default corpus FineWeb. Top-1 routing only (matches v11 engine spec).",
+  "name": "Veritate MEGA (8-expert top-1 MoE)",
+  "description": "MoE byte-level decoder. Each transformer block's FFN is replaced with N independent expert FFNs and a top-1 router; total parameter count scales with expert count while active parameters per byte stay near a single expert's footprint. Default corpus FineWeb. Top-1 routing only (matches v11 engine spec).",
   "kind": "trainer",
   "flow": [
     "scratch",

@@ -1,6 +1,6 @@
 {
-  "name": "Veritate 1.3B (vanilla dense, 8-bit Adam, two-phase QAT)",
-  "description": "Vanilla byte-level decoder in the 1B-2B range. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults turn on activation checkpointing and 8-bit AdamW so the optimizer fits a 12-24 GB GPU. Two-phase QAT recipe: train fp/bf base first (qat_enabled=false), resume with qat_enabled=true for the last ~25% of the budget. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "name": "Veritate 1.3B (vanilla dense)",
+  "description": "Vanilla byte-level decoder in the 1B-2B range. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing and 8-bit AdamW for memory efficiency.",
   "kind": "trainer",
   "flow": [
     "scratch",

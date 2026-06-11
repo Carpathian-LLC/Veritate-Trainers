@@ -1,6 +1,6 @@
 {
-  "name": "Veritate 13B (vanilla dense, 8-bit Adam, multi-GPU territory)",
-  "description": "Vanilla byte-level decoder in the 3B-13B range. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults assume an 80 GB-class card or sharded multi-GPU setup; activation checkpointing and 8-bit AdamW are mandatory. Two-phase QAT recipe supported. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "name": "Veritate 13B (vanilla dense)",
+  "description": "Vanilla byte-level decoder in the 3B-13B range. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing and 8-bit AdamW for memory efficiency.",
   "kind": "trainer",
   "flow": [
     "scratch",

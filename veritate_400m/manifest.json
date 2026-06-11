@@ -1,6 +1,6 @@
 {
-  "name": "Veritate 400M (vanilla dense, two-phase QAT)",
-  "description": "Vanilla byte-level decoder in the 200-800M range. Same canonical Veritate stack as 80M / 200M (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256), tuned for the medium-large band where activation checkpointing earns its keep but a single GPU still fits the optimizer. Two-phase QAT recipe: train fp/bf base first (qat_enabled=false), resume with qat_enabled=true for the last ~25% of the budget. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "name": "Veritate 400M (vanilla dense)",
+  "description": "Vanilla byte-level decoder in the 200-800M range. Same canonical Veritate stack as 80M / 200M (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256).",
   "kind": "trainer",
   "flow": [
     "scratch",

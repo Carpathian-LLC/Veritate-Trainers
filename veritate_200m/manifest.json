@@ -1,6 +1,6 @@
 {
-  "name": "Veritate 200M (default base model, two-phase QAT)",
-  "description": "Base model trainer at 200M. Vanilla byte-level decoder (vocab=256), tuned for TinyStories coherence. Two-phase QAT recipe: train fp/bf base first (qat_enabled=false), resume with qat_enabled=true for the last ~25% of the budget. Exports to a v9 INT8 binary that loads cleanly on the C engine.",
+  "name": "Veritate 200M (default base model)",
+  "description": "Base model trainer at 200M. Vanilla byte-level decoder (vocab=256), tuned for TinyStories coherence.",
   "kind": "trainer",
   "flow": [
     "scratch",
