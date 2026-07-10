@@ -29,6 +29,7 @@
     "min_lr": 2e-05,
     "warmup_steps": 1500,
     "lr_schedule": "cosine",
+    "optimizer": "muon",
     "wsd_decay_frac": 0.1,
     "wsd_decay_kind": "sqrt",
     "weight_decay": 0.1,

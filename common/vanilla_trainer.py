@@ -30,7 +30,45 @@ import time
 import numpy as np
 import torch
 
-from veritate_core.plugin import save, paths, model as _model_mod, qat as qat_helpers, multicorpus, bench
+from veritate_core.plugin import save, paths, model as _model_mod, qat as qat_helpers, multicorpus, bench, hardware
+# Optional: shared optimizer builder (muon) and patched-trunk variant.
+# Feature-detect so this trainer still runs on an older platform.
+try:
+    from veritate_core.plugin import optim as optim_helpers
+except ImportError:
+    optim_helpers = None
+try:
+    from veritate_core.plugin import model_patched as _model_patched_mod
+    VeritatePatched = _model_patched_mod.VeritatePatched
+except ImportError:
+    VeritatePatched = None
+try:
+    from veritate_core.plugin import model_recurrent as _model_recurrent_mod
+    VeritateRecurrent = _model_recurrent_mod.VeritateRecurrent
+except ImportError:
+    VeritateRecurrent = None
+try:
+    from veritate_core.plugin import model_memory as _model_memory_mod
+    VeritateMemory = _model_memory_mod.VeritateMemory
+except ImportError:
+    VeritateMemory = None
+try:
+    from veritate_core.plugin import slm as slm_helpers
+except ImportError:
+    slm_helpers = None
+# Optional: NVMe optimizer paging needs a platform new enough to expose the memory
+# planner/executor offload APIs. Feature-detect so this trainer still runs on an
+# older platform (it just falls back to the pre-paging behavior).
+try:
+    from veritate_core.plugin import mem_planner, mem_executor
+    _MEM_PAGING = (hasattr(mem_executor, "make_optimizer")
+                   and hasattr(mem_executor, "OFFLOAD_TIERS")
+                   and hasattr(mem_planner, "plan_training_memory")
+                   and hasattr(bench, "plan_result"))
+except Exception:
+    mem_planner = None
+    mem_executor = None
+    _MEM_PAGING = False
 
 Veritate         = _model_mod.Veritate
 VOCAB_BYTE_LEVEL = _model_mod.VOCAB_BYTE_LEVEL
@@ -53,6 +91,15 @@ BASE_CKPT_SUFFIX = ".pt"
 LR_SCHEDULES    = ("cosine", "linear", "constant", "wsd")
 WSD_DECAY_KINDS = ("sqrt", "linear", "cosine")
 PRECISIONS      = ("fp32", "bf16")
+
+STATE_CARRIES      = ("off", "chunks")
+STATE_CARRY_CHUNKS = "chunks"
+STATE_CARRY_TRUNKS = ("hybrid", "hybrid_moe", "recurrent")
+
+# Weights, grads, and Adam moments are all fp32 here (autocast keeps fp32 master
+# weights even at bf16 precision), so the memory planner sizes its buckets in fp32.
+PLAN_DTYPE      = "fp32"
+PAGED_STATE_DIR = "optim_state"
 
 
 # ------------------------------------------------------------------------------------
@@ -86,9 +133,15 @@ RESERVED_BOOL_FLAGS = {
 # a Core Plugin always has its args parsed cleanly. Manifest values override.
 RESERVED_STR_FLAGS = {
     "activation": "gelu",
+    "optimizer": "adamw",
+    "trunk": "dense",
+    "slm_ref": "",
+    "state_rule": "gla",
+    "state_carry": "off",
 }
 RESERVED_FLOAT_FLAGS = {
     "l1_lambda": 0.0,
+    "slm_keep": 0.6,
 }
 
 
@@ -212,40 +265,9 @@ def make_data_loader(bin_path, total_chunk_len, batch_size, seed):
     return draw, N
 
 
-DEVICE_ENV = "VERITATE_DEVICE"
-
-
-def _device_available(name):
-    if name == "cpu":  return True
-    if name == "cuda": return torch.cuda.is_available()
-    if name == "mps":
-        return bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
-    return False
-
-
-def pick_device():
-    """Trainer-side device selection. The platform may force a specific device
-    via VERITATE_DEVICE=cpu/cuda/mps; we obey it (falling back to cpu if the
-    requested device isn't actually available). Otherwise pick best-available.
-    The trainer makes no host-architecture assumptions — that's the platform's
-    job, communicated through the env var."""
-    forced = (os.environ.get(DEVICE_ENV) or "").strip().lower()
-    if forced and forced != "auto":
-        if forced in ("cpu", "cuda", "mps"):
-            if _device_available(forced):
-                return forced
-            print(f"[vanilla_trainer] requested device={forced!r} unavailable; using cpu", flush=True)
-            return "cpu"
-        print(f"[vanilla_trainer] ignoring unknown {DEVICE_ENV}={forced!r}", flush=True)
-    if torch.cuda.is_available():
-        return "cuda"
-    if _device_available("mps"):
-        return "mps"
-    return "cpu"
-
-
 def chunked_step(model, tokens, targets, seq, amp_dtype, *, backward=False, bptt_window=1,
-                 device_type="cuda", l1_lambda=0.0):
+                 device_type="cuda", l1_lambda=0.0, slm_ref=None, slm_keep=0.6,
+                 state_carry="off"):
     B, total_len = tokens.shape
     n_chunks = max(1, total_len // seq)
     K = max(1, int(bptt_window))
@@ -253,6 +275,19 @@ def chunked_step(model, tokens, targets, seq, amp_dtype, *, backward=False, bptt
     n_valid  = 0
     window_losses = []
     capture_l1 = bool(getattr(model, "capture_l1", False)) and l1_lambda > 0.0
+    # Memory trunks carry fast-weight state across the contiguous chunks of one
+    # step (reset per step): the loss then rewards reading memory beyond the
+    # attention window. Non-memory models lack forward_carry and take the
+    # plain path.
+    mem_carry = hasattr(model, "forward_carry")
+    if mem_carry:
+        model.reset_memory()
+    # state_carry=chunks: recurrent global state threads left-to-right through the
+    # step's contiguous chunks via forward_streaming (positions stay window-local).
+    # Grads flow through the carry inside a bptt window; carry detached at each
+    # backward. State resets per step (rows are unrelated stream offsets).
+    rec_carry  = state_carry == STATE_CARRY_CHUNKS
+    rec_states = None
     for cstart in range(0, total_len, seq):
         cend = min(cstart + seq, total_len)
         ct = tokens[:, cstart:cend]
@@ -260,13 +295,24 @@ def chunked_step(model, tokens, targets, seq, amp_dtype, *, backward=False, bptt
         if ct.size(1) < 2:
             break
         with torch.autocast(device_type=device_type, dtype=amp_dtype, enabled=(amp_dtype is not None)):
-            _, loss = model(ct, targets=cg)
+            if rec_carry:
+                logits, rec_states = model.forward_streaming(ct, rec_states)
+                loss = torch.nn.functional.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)), cg.reshape(-1), ignore_index=-1)
+            else:
+                logits, loss = model.forward_carry(ct, targets=cg) if mem_carry else model(ct, targets=cg)
+            if slm_ref is not None:
+                loss = slm_helpers.selective_loss(slm_ref, ct, cg, logits, keep_frac=slm_keep)
         if loss is None or not torch.isfinite(loss):
             continue
         if capture_l1:
             l1 = model.post_l1_sum()
             if l1 is not None:
                 loss = loss + l1_lambda * l1
+        if backward:
+            aux = model.moe_aux_sum() if hasattr(model, "moe_aux_sum") else None
+            if aux is not None:
+                loss = loss + aux
         loss_sum += float(loss.detach().item())
         n_valid  += 1
         if backward:
@@ -276,6 +322,10 @@ def chunked_step(model, tokens, targets, seq, amp_dtype, *, backward=False, bptt
             if window_full or last_chunk:
                 (torch.stack(window_losses).sum() / n_chunks).backward()
                 window_losses = []
+                if mem_carry:
+                    model.carry_memory()
+                if rec_states is not None:
+                    rec_states = [{k: v.detach() for k, v in st.items()} for st in rec_states]
     if n_valid == 0:
         return None
     return loss_sum / n_valid
@@ -321,7 +371,8 @@ def load_resume_state(model, name, step, device):
 
 
 @torch.no_grad()
-def evaluate(model, val_draw, n_iters, seq, amp_dtype, bptt_window, device_type="cuda"):
+def evaluate(model, val_draw, n_iters, seq, amp_dtype, bptt_window, device_type="cuda",
+             state_carry="off"):
     model.eval()
     losses = []
     for _ in range(n_iters):
@@ -329,14 +380,29 @@ def evaluate(model, val_draw, n_iters, seq, amp_dtype, bptt_window, device_type=
         toks = toks.to(next(model.parameters()).device, non_blocking=True)
         tgts = tgts.to(next(model.parameters()).device, non_blocking=True)
         loss = chunked_step(model, toks, tgts, seq, amp_dtype,
-                            bptt_window=bptt_window, device_type=device_type)
+                            bptt_window=bptt_window, device_type=device_type,
+                            state_carry=state_carry)
         if loss is not None:
             losses.append(float(loss))
     model.train()
     return float(np.mean(losses)) if losses else None
 
 
-def build_optimizer(params, args, device):
+def build_optimizer(params, args, device, plan=None, state_dir=None, model=None):
+    want_muon = getattr(args, "optimizer", "adamw") == "muon"
+    if want_muon and (optim_helpers is None or model is None):
+        print("optimizer=muon requested but unavailable on this platform; using AdamW", flush=True)
+        want_muon = False
+    if want_muon:
+        print("optimizer: Muon (2D hidden weights) + AdamW (emb/norms/1D)", flush=True)
+        return optim_helpers.build_muon(model, args)
+    if _MEM_PAGING and plan is not None and plan.tier in mem_executor.OFFLOAD_TIERS:
+        print("optimizer state paged to NVMe (" + plan.tier + "); resident optimizer "
+              "memory ~0, step time is disk-bound", flush=True)
+        return mem_executor.make_optimizer(
+            params, plan,
+            lr=args.base_lr, betas=(args.beta1, args.beta2), eps=1e-6,
+            weight_decay=args.weight_decay, state_dir=state_dir)
     use_8bit = bool(getattr(args, "use_8bit_adam", False))
     if use_8bit and importlib.util.find_spec("bitsandbytes") is None:
         print("8-bit AdamW requested but bitsandbytes is not installed; "
@@ -420,31 +486,106 @@ def run(plugin_id, here):
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    device = pick_device()
+    device = hardware.pick_device()
     print("device: " + device, flush=True)
-    amp_dtype = torch.bfloat16 if args.precision == "bf16" else None
+    amp_dtype = hardware.resolve_precision(args.precision, device)
 
     shape = size_presets[args.size]
+
+    # Plan the memory ladder from the size preset BEFORE building the model: a model
+    # whose weights+grads exceed the budget cannot be built (the allocation OOMs/
+    # SIGKILLs), so refuse with the floor numbers instead of hanging. bench plans at
+    # batch 1 (the ramp explores batch); a real run plans at its configured batch.
+    mem_plan = None
+    if _MEM_PAGING and shape.get("params"):
+        plan_batch = 1 if args.bench else args.batch_size
+        mem_plan = mem_planner.plan_training_memory(
+            shape["params"], shape["hidden"], shape["layers"], shape["ffn"],
+            plan_batch, args.seq, PLAN_DTYPE)
+        print("mem plan: " + mem_planner.format_plan(mem_plan), flush=True)
+        if not mem_plan.fits:
+            if args.bench:
+                print("BENCH_RESULT " + json.dumps(bench.plan_result(mem_plan, device, args.seq)), flush=True)
+            elif mem_plan.params_bytes + mem_plan.grads_bytes > mem_plan.budget_bytes:
+                print("INFEASIBLE: weights+grads alone exceed the memory budget; paging "
+                      "the optimizer cannot help. Use a smaller size or a larger-memory "
+                      "machine.", flush=True)
+            else:
+                print("INFEASIBLE at this batch/seq: activations push the run over budget "
+                      "even with checkpointing. Reduce batch_size or seq.", flush=True)
+            return
+
     activation = getattr(args, "activation", "gelu") or "gelu"
     l1_lambda  = float(getattr(args, "l1_lambda", 0.0) or 0.0)
-    veritate_model = Veritate(
+    trunk      = getattr(args, "trunk", "dense") or "dense"
+    model_cls  = Veritate
+    model_kwargs = {}
+    if trunk == "patched":
+        if VeritatePatched is None:
+            raise ValueError("trunk=patched requested but platform lacks model_patched")
+        model_cls = VeritatePatched
+    elif trunk == "hybrid":
+        if VeritatePatched is None:
+            raise ValueError("trunk=hybrid requested but platform lacks model_patched")
+        model_cls = VeritatePatched
+        model_kwargs = {"global_mixer": "recurrent"}
+    elif trunk == "hybrid_moe":
+        if VeritatePatched is None:
+            raise ValueError("trunk=hybrid_moe requested but platform lacks model_patched")
+        model_cls = VeritatePatched
+        model_kwargs = {"global_mixer": "recurrent", "global_ffn": "moe"}
+    elif trunk == "looped":
+        if VeritatePatched is None:
+            raise ValueError("trunk=looped requested but platform lacks model_patched")
+        model_cls = VeritatePatched
+        model_kwargs = {"global_loops": 4}
+    elif trunk == "recurrent":
+        if VeritateRecurrent is None:
+            raise ValueError("trunk=recurrent requested but platform lacks model_recurrent")
+        model_cls = VeritateRecurrent
+    elif trunk == "memory":
+        if VeritateMemory is None:
+            raise ValueError("trunk=memory requested but platform lacks model_memory")
+        model_cls = VeritateMemory
+    state_rule = getattr(args, "state_rule", "gla") or "gla"
+    if trunk in ("hybrid", "hybrid_moe", "recurrent") and state_rule != "gla":
+        model_kwargs["state_rule"] = state_rule
+    state_carry = getattr(args, "state_carry", "off") or "off"
+    if state_carry not in STATE_CARRIES:
+        raise ValueError("unknown state_carry: " + str(state_carry)
+                         + " (valid: " + ", ".join(STATE_CARRIES) + ")")
+    if state_carry == STATE_CARRY_CHUNKS and trunk not in STATE_CARRY_TRUNKS:
+        raise ValueError("state_carry=chunks requires trunk in: " + ", ".join(STATE_CARRY_TRUNKS))
+    veritate_model = model_cls(
         vocab=VOCAB_BYTE_LEVEL,
         hidden=shape["hidden"], layers=shape["layers"],
         ffn=shape["ffn"], heads=shape["heads"], seq=args.seq,
         activation=activation,
         capture_l1=(l1_lambda > 0.0),
+        **model_kwargs,
     )
-    print(f"activation: {activation}  l1_lambda: {l1_lambda}", flush=True)
+    print(f"activation: {activation}  l1_lambda: {l1_lambda}  trunk: {trunk}"
+          f"  state_carry: {state_carry}", flush=True)
     if qat_enabled:
         qat_helpers.set_qat(veritate_model, True)
         print("QAT: enabled (fake-quant matmuls + embeddings + RMSNorm + residual adds)", flush=True)
 
-    if getattr(args, "use_act_ckpt", False):
+    if _MEM_PAGING and mem_plan is not None and mem_plan.tier in mem_executor.CHECKPOINT_TIERS:
+        mem_executor.enable_grad_checkpoint(veritate_model)
+        print("activation checkpointing: ENABLED (mem plan tier " + mem_plan.tier + ")", flush=True)
+    elif getattr(args, "use_act_ckpt", False):
         print("activation checkpointing: ENABLED", flush=True)
         for blk in veritate_model.blocks:
             blk.forward = (lambda fwd: lambda x: torch.utils.checkpoint.checkpoint(fwd, x, use_reentrant=False))(blk.forward)
 
     veritate_model.to(device)
+    slm_ref = None
+    _slm_name = (getattr(args, "slm_ref", "") or "").strip()
+    if _slm_name:
+        if slm_helpers is None:
+            raise ValueError("slm_ref requested but platform lacks slm helper")
+        slm_ref = slm_helpers.load_reference(paths.model_dir(_slm_name), device)
+        print(f"SLM: selective loss ON, reference={_slm_name}, keep_frac={getattr(args, 'slm_keep', 0.6)}", flush=True)
     n_params = sum(p.numel() for p in veritate_model.parameters())
     print("device: " + device + "  precision: " + args.precision, flush=True)
     print("params: " + str(n_params), flush=True)
@@ -453,8 +594,13 @@ def run(plugin_id, here):
           + " seq=" + str(args.seq), flush=True)
 
     if args.bench:
-        result = bench.run(veritate_model, device, args.seq, VOCAB_BYTE_LEVEL,
-                           on_progress=lambda s: print("bench: " + s, flush=True))
+        if _MEM_PAGING:
+            result = bench.run(veritate_model, device, args.seq, VOCAB_BYTE_LEVEL,
+                               on_progress=lambda s: print("bench: " + s, flush=True),
+                               plan=mem_plan)
+        else:
+            result = bench.run(veritate_model, device, args.seq, VOCAB_BYTE_LEVEL,
+                               on_progress=lambda s: print("bench: " + s, flush=True))
         print("BENCH_RESULT " + json.dumps(result), flush=True)
         return
 
@@ -487,7 +633,12 @@ def run(plugin_id, here):
         val_draw, _ = make_data_loader(val_path, total_chunk_len, args.batch_size, args.seed + 1)
     print("train corpus bytes: " + str(train_n) + "  per-step chunk: " + str(total_chunk_len) + "  batch: " + str(args.batch_size), flush=True)
 
-    opt = build_optimizer(veritate_model.parameters(), args, device)
+    if _MEM_PAGING:
+        opt = build_optimizer(veritate_model.parameters(), args, device, plan=mem_plan,
+                              state_dir=os.path.join(paths.model_dir(name), PAGED_STATE_DIR),
+                              model=veritate_model)
+    else:
+        opt = build_optimizer(veritate_model.parameters(), args, device, model=veritate_model)
     if resume_opt_state is not None:
         try:
             opt.load_state_dict(resume_opt_state)
@@ -499,6 +650,7 @@ def run(plugin_id, here):
     last_log = t0
     last_log_step = resume_step
     start_step = resume_step + 1
+    skipped_nonfinite = 0
     for step in range(start_step, args.total_steps + 1):
         lr = lr_at(step, args.total_steps, args.warmup_steps, args.base_lr, args.min_lr,
                    schedule=args.lr_schedule,
@@ -515,8 +667,14 @@ def run(plugin_id, here):
         opt.zero_grad(set_to_none=True)
         loss = chunked_step(veritate_model, toks, tgts, args.seq, amp_dtype,
                             backward=True, bptt_window=args.bptt_window,
-                            device_type=device, l1_lambda=l1_lambda)
+                            device_type=device, l1_lambda=l1_lambda,
+                            slm_ref=slm_ref, slm_keep=float(getattr(args, "slm_keep", 0.6)),
+                            state_carry=state_carry)
         if loss is None:
+            skipped_nonfinite += 1
+            if skipped_nonfinite % args.log_every == 0 or skipped_nonfinite == 1:
+                print(f"WARNING step {step}: non-finite loss, step skipped "
+                      f"({skipped_nonfinite} skipped so far)", flush=True)
             continue
         gn = torch.nn.utils.clip_grad_norm_(veritate_model.parameters(), args.grad_clip)
         opt.step()
@@ -538,7 +696,7 @@ def run(plugin_id, here):
 
         if val_draw is not None and step % args.eval_every == 0:
             v = evaluate(veritate_model, val_draw, args.eval_iters, args.seq, amp_dtype,
-                         args.bptt_window, device_type=device)
+                         args.bptt_window, device_type=device, state_carry=state_carry)
             if v is not None:
                 print("step " + str(step) + "  val_loss " + format(v, ".4f"), flush=True)
                 append_train_row(name, step, "val", v, lr=lr,

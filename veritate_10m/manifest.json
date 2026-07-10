@@ -20,7 +20,7 @@
     "size": "10m",
     "precision": "fp32",
     "version": "v1",
-    "total_steps": 4000,
+    "total_steps": 12000,
     "batch_size": 32,
     "seq": 512,
     "n_chunks": 4,
@@ -29,6 +29,7 @@
     "min_lr": 6e-05,
     "warmup_steps": 120,
     "lr_schedule": "cosine",
+    "optimizer": "muon",
     "wsd_decay_frac": 0.1,
     "wsd_decay_kind": "sqrt",
     "weight_decay": 0.1,
@@ -40,7 +41,7 @@
     "log_every": 10,
     "eval_every": 100,
     "eval_iters": 8,
-    "seed": 0,
+    "seed": 1,
     "use_act_ckpt": false,
     "qat_enabled": true
   }

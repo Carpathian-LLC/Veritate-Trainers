@@ -1,6 +1,6 @@
 {
   "name": "Veritate 400M",
-  "description": "Vanilla byte-level decoder at the 400M scale. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing and 8-bit AdamW.",
+  "description": "Vanilla byte-level decoder at the 400M scale. Same canonical Veritate stack (GELU FFN, RMSNorm, learned pos-emb, tied LM head, vocab=256). Defaults enable activation checkpointing.",
   "kind": "trainer",
   "bench": true,
   "flow": [
@@ -29,6 +29,7 @@
     "min_lr": 3e-05,
     "warmup_steps": 500,
     "lr_schedule": "cosine",
+    "optimizer": "muon",
     "wsd_decay_frac": 0.1,
     "wsd_decay_kind": "sqrt",
     "weight_decay": 0.1,
