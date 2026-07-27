@@ -138,6 +138,7 @@ RESERVED_STR_FLAGS = {
     "slm_ref": "",
     "state_rule": "gla",
     "state_carry": "off",
+    "loss_mask": "off",
 }
 RESERVED_FLOAT_FLAGS = {
     "l1_lambda": 0.0,
@@ -265,6 +266,57 @@ def make_data_loader(bin_path, total_chunk_len, batch_size, seed):
     return draw, N
 
 
+# A corpus this dense in ChatML turn markers is a chat/SFT set, not free prose.
+# Training one WITHOUT loss_mask=assistant computes loss over the user's turns too,
+# so the model learns to continue the user rather than answer them. That silently
+# produces a fluent model that ignores the question, so the trainer refuses to
+# start until the caller decides explicitly.
+TRAINING_KIND_CHAT      = "chat"   # stamped on config.json so the serve path knows
+                                   # this model expects ChatML framing, instead of
+                                   # guessing and mismatching what it was trained on
+CHATML_DENSITY_SFT      = 0.20     # marker-bearing sample windows / windows read
+CHATML_PROBE_WINDOWS    = 64
+CHATML_PROBE_WINDOW_LEN = 8192
+
+CHATML_ASSISTANT_OPEN = b"<|im_start|>assistant\n"
+CHATML_IM_START       = b"<|im_start|>"
+CHATML_IM_END         = b"<|im_end|>"
+
+
+def _keep_assistant(row_bytes):
+    n = len(row_bytes)
+    keep = np.zeros(n, dtype=bool)
+    ao, ist, ie = CHATML_ASSISTANT_OPEN, CHATML_IM_START, CHATML_IM_END
+    la, li, le = len(ao), len(ist), len(ie)
+    i = 0
+    in_asst = False
+    while i < n:
+        if row_bytes[i:i + la] == ao:
+            in_asst = True; i += la; continue
+        if row_bytes[i:i + li] == ist:
+            in_asst = False; i += li; continue
+        if in_asst and row_bytes[i:i + le] == ie:
+            keep[i:i + le] = True; i += le; in_asst = False; continue
+        keep[i] = in_asst
+        i += 1
+    return keep
+
+
+def apply_role_mask(toks, tgts):
+    tk = toks.cpu().numpy().astype(np.uint8)
+    tg = tgts.clone()
+    B, N = tk.shape
+    for b in range(B):
+        rb = tk[b].tobytes()
+        if CHATML_IM_START not in rb:
+            continue
+        keep = _keep_assistant(rb)
+        active = np.zeros(N, dtype=bool)
+        active[:-1] = keep[1:]
+        tg[b][~torch.from_numpy(active)] = -1
+    return tg
+
+
 def chunked_step(model, tokens, targets, seq, amp_dtype, *, backward=False, bptt_window=1,
                  device_type="cuda", l1_lambda=0.0, slm_ref=None, slm_keep=0.6,
                  state_carry="off"):
@@ -349,7 +401,7 @@ def write_config(name, args, base_cfg, n_params, corpus_hash, plugin_id):
         "plugin": plugin_id,
         "vocab": VOCAB_BYTE_LEVEL,
         "shape": shape,
-        "training":  ("qat" if qat_on else ""),
+        "training":  ("qat" if qat_on else (args.training_kind or "")),
         "qat_source": (args.resume if (qat_on and args.resume) else ""),
         "training_args": ta,
         "n_params_total": n_params,
@@ -423,6 +475,77 @@ def build_optimizer(params, args, device, plan=None, state_dir=None, model=None)
     )
 
 
+def chatml_density(train_path):
+    """Fraction of sampled windows that contain a ChatML turn marker. Sampled
+    rather than scanned: a pretrain corpus can be gigabytes."""
+    try:
+        size = os.path.getsize(train_path)
+    except OSError:
+        return 0.0
+    if size <= 0:
+        return 0.0
+    span = min(CHATML_PROBE_WINDOW_LEN, size)
+    hits = 0
+    with open(train_path, "rb") as f:
+        for i in range(CHATML_PROBE_WINDOWS):
+            off = (size - span) * i // max(1, CHATML_PROBE_WINDOWS - 1)
+            f.seek(off)
+            if CHATML_IM_START in f.read(span):
+                hits += 1
+    return hits / CHATML_PROBE_WINDOWS
+
+
+def require_loss_mask_decision(args, corpus_mix, argv):
+    """Refuse to train a ChatML-dense corpus until loss_mask is set explicitly.
+
+    Forgetting it is silent: the run looks healthy, the loss falls, and the model
+    comes out fluent but unable to answer a question. A warning is too easy to
+    miss in a long log, so this is an error the caller has to answer."""
+    if any(a == "--loss_mask" or a.startswith("--loss_mask=") for a in argv):
+        return
+    if getattr(args, "loss_mask", "off") != "off":
+        return
+    for _stem, _val, train_path, _w in _iter_mix_paths(corpus_mix):
+        density = chatml_density(train_path)
+        if density >= CHATML_DENSITY_SFT:
+            raise SystemExit(
+                "refusing to start: corpus '" + str(args.corpus) + "' is "
+                + str(int(density * 100)) + "% ChatML turn markers, which makes it a "
+                "chat/SFT corpus, but --loss_mask was never set.\n"
+                "  Without it, loss is computed over the USER's turns too and the model "
+                "learns to continue the user instead of answering.\n"
+                "  Pass --loss_mask assistant   (what you almost certainly want for SFT)\n"
+                "  or   --loss_mask off         (to train on every byte on purpose)")
+
+
+def _iter_mix_paths(corpus_mix):
+    """Yield (stem, val_path, train_path, weight) for a resolved multicorpus mix,
+    tolerating the tuple shapes the resolver has used across versions."""
+    for entry in corpus_mix or []:
+        if not isinstance(entry, (tuple, list)):
+            continue
+        paths_in = [x for x in entry if isinstance(x, str) and x.endswith(".bin")]
+        train_path = None
+        for cand in paths_in:
+            if cand.endswith("_train.bin"):
+                train_path = cand
+                break
+        if train_path is None and paths_in:
+            train_path = paths_in[-1]
+        if train_path:
+            yield (None, None, train_path, None)
+
+
+def detect_training_kind(corpus_mix):
+    """What framing did this model learn? Stamped on config.json so serving reads
+    it instead of assuming. A model trained on plain prose and then served ChatML
+    produces confident nonsense, which is exactly how chat_200m broke."""
+    for _stem, _val, train_path, _w in _iter_mix_paths(corpus_mix):
+        if chatml_density(train_path) >= CHATML_DENSITY_SFT:
+            return TRAINING_KIND_CHAT
+    return ""
+
+
 def run(plugin_id, here):
     manifest = _load_manifest(here)
     size_presets = _size_presets(manifest)
@@ -477,12 +600,18 @@ def run(plugin_id, here):
 
     _corpus_mix = None
     val_path    = None
+    args.training_kind = ""
     if not args.bench:
         _corpus_mix = multicorpus.resolve_and_weight(args.corpus, resolve_corpus)
         val_path    = _corpus_mix[0][1]
         print("corpus mix:   " + multicorpus.format_mix_summary(_corpus_mix), flush=True)
         if val_path:
             print("corpus val:   " + val_path, flush=True)
+        require_loss_mask_decision(args, _corpus_mix, sys.argv)
+        args.training_kind = detect_training_kind(_corpus_mix)
+        if args.training_kind:
+            print("training kind: " + args.training_kind
+                  + " (config.json records the framing this model expects)", flush=True)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -597,10 +726,13 @@ def run(plugin_id, here):
         if _MEM_PAGING:
             result = bench.run(veritate_model, device, args.seq, VOCAB_BYTE_LEVEL,
                                on_progress=lambda s: print("bench: " + s, flush=True),
-                               plan=mem_plan)
+                               plan=mem_plan, amp_dtype=amp_dtype,
+                               n_chunks=args.n_chunks, bptt_window=args.bptt_window)
         else:
             result = bench.run(veritate_model, device, args.seq, VOCAB_BYTE_LEVEL,
-                               on_progress=lambda s: print("bench: " + s, flush=True))
+                               on_progress=lambda s: print("bench: " + s, flush=True),
+                               amp_dtype=amp_dtype,
+                               n_chunks=args.n_chunks, bptt_window=args.bptt_window)
         print("BENCH_RESULT " + json.dumps(result), flush=True)
         return
 
@@ -660,6 +792,8 @@ def run(plugin_id, here):
             g["lr"] = lr
 
         toks, tgts = train_draw()
+        if getattr(args, "loss_mask", "off") == "assistant":
+            tgts = apply_role_mask(toks, tgts)
         toks = toks.to(device, non_blocking=True)
         tgts = tgts.to(device, non_blocking=True)
 

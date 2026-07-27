@@ -14,6 +14,13 @@
       "ffn": 1280,
       "heads": 8,
       "params": 10000000
+    },
+    "10m_w2": {
+      "layers": 8,
+      "hidden": 320,
+      "ffn": 2560,
+      "heads": 8,
+      "params": 26000000
     }
   },
   "defaults": {
